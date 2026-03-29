@@ -1,0 +1,2 @@
+User is a Senior QA Automation Engineer.
+User is interested in root cause analysis for test failures.

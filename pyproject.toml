@@ -1,0 +1,28 @@
+[project]
+name = "failtale"
+version = "0.1.0"
+description = "FailTale using crewAI"
+authors = [{ name = "Oscar Barrios Torrero", email = "srbarrios@gmail.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai-tools>=1.12.2",
+    "crewai[google-genai,litellm,tools]==1.12.2",
+    "mcp>=1.26.0",
+    "plot>=0.6.5",
+    "pydantic>=2.11.10",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+failtale = "failtale.main:run"
+run_crew = "failtale.main:run"
+train = "failtale.main:train"
+replay = "failtale.main:replay"
+test = "failtale.main:test"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"

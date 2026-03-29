@@ -1,0 +1,50 @@
+select_hosts_task:
+  description: >
+    Review the following test report and failure message:
+    Test Report: {test_report}
+    Failure: {test_failure}
+    
+    Available hosts in the environment: {hosts_inventory}
+    
+    Determine the most relevant hostnames to investigate. Choose those that most likely match words from the test report.
+  expected_output: >
+    A comma-separated list of hostnames.
+  agent: host_selector
+
+collect_data_task:
+  description: >
+    The selected hosts are: {selected_hosts}
+    
+    For these hosts, execute the predefined useful commands to collect logs based on their roles:
+    Commands Config: {components_config}
+    SSH Credentials: {ssh_credentials}
+    
+    DO NOT just output the JSON of the command. You must actually invoke the tool to execute the commands and gather the real output from the server.
+  expected_output: >
+    The actual raw string outputs and logs retrieved from the servers after successfully running the commands via the tool.
+  agent: data_collector
+
+analyze_screenshot_task:
+  description: >
+    Review the screenshot taken at the moment of the test failure located at: {screenshot_path}
+    
+    Use your vision capabilities to extract any visible text, especially looking for:
+    - Red error banners or popups
+    - Form validation errors
+    - The current page title or state
+    
+    Test Failure Context: {test_failure}
+  expected_output: >
+    A detailed text summary of the visual state of the application at the time of failure, explicitly quoting any visible error messages or unexpected UI elements.
+  agent: screenshot_analyzer
+
+analyze_failure_task:
+  description: >
+    Analyze the collected logs against the original test failure.
+    Test Report: {test_report}
+    Failure Message: {test_failure}
+    
+    Review the collected logs from the previous task. Look for exact word matches, errors, or anomalies.
+  expected_output: >
+    A concise root cause hint explaining why the test failed based on the logs, including facts and relevant log outputs. Format as markdown.
+  agent: failure_analyst

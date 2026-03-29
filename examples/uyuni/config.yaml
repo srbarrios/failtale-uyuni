@@ -1,0 +1,57 @@
+# Global SSH configuration (can be overridden per host if necessary)
+ssh_defaults:
+  username: "root"
+  private_key_path: "/Users/obarrios/.ssh/id_ed25519_test_env"
+  port: 22
+  connection_timeout: 30 # Seconds
+  command_timeout: 180    # Seconds
+
+# Definition of what data to collect per component role
+components:
+  server:
+    useful_data:
+      - description: "Last 100 lines of the failtale's main logs"
+        command: "mgrctl exec \"tail -n 100 /var/log/rhn/*.log\""
+      - description: "List of existing activation keys"
+        command: "mgrctl exec \"spacecmd -q -u admin -p admin api activationkey.listActivationKeys\""
+      - description: "List of existing systems"
+        command: "mgrctl exec \"spacecmd -q -u admin -p admin api system.listSystems\""
+      - description: "List of existing software channels"
+        command: "mgrctl exec \"spacecmd -q -u admin -p admin api channel.listSoftwareChannels\""
+      - description: "List of accepted salt keys"
+        command: "mgrctl exec \"spacecmd -q -u admin -p admin api saltkey.acceptedList\""
+      - description: "Status of the main service"
+        command: "mgradm status || echo 'systemctl not available'"
+      - description: "Processes related to the failtale"
+        command: "mgrctl exec \"ps aux | grep -E 'spacewalk|rhn|manager|uyuni|mgr|taskomatic' || echo 'grep found no processes'\""
+      - description: "Listening ports (TCP)"
+        command: "mgrctl exec \"ss -tlpn | grep LISTEN || netstat -tlpn | grep LISTEN || echo 'ss/netstat command not available'\""
+  minion:
+    useful_data:
+      - description: "Last 100 lines of the minion's log"
+        command: "journalctl --identifier salt-minion --lines 100"
+      - description: "Last 100 lines of the minion's zypper log"
+        command: "tail -n 100 /var/log/zypper.log"
+      - description: "Processes related to the minion"
+        command: "ps aux | grep -E 'salt' || echo 'grep found no processes'"
+      - description: "Listening ports (TCP)"
+        command: "ss -tlpn | grep LISTEN || netstat -tlpn | grep LISTEN || echo 'ss/netstat command not available'"
+  proxy:
+    useful_data:
+      - description: "Last 100 lines of the proxy's log"
+        command: "journalctl --lines 100"
+  build_host:
+    useful_data:
+      - description: "Last 100 lines of the build host's log"
+        command: "journalctl --lines 100"
+
+# Definition of the hosts to be analyzed
+hosts:
+ - hostname: "mlm-bv-head-server.mgr.suse.de"
+   role: "server"
+   user: "root"
+   password: "linux"
+ - hostname: "mlm-bv-head-sles15sp7-minion.mgr.suse.de"
+   role: "minion"
+   user: "root"
+   password: "linux"
