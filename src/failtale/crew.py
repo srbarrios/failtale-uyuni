@@ -4,6 +4,7 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai_tools import VisionTool
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
+from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
 from failtale.tools import SSHMCPTool
 
 #llm = LLM(
@@ -19,6 +20,12 @@ llm = LLM(
 
 user_prefs_source = TextFileKnowledgeSource(
     file_paths=["user_preference.txt"]
+)
+
+pdf_source = PDFKnowledgeSource(
+    file_paths=[
+        "examples/uyuni/uyuni_administration_guide.pdf"
+    ],
 )
 
 vision_tool = VisionTool()
