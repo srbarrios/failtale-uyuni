@@ -1,6 +1,9 @@
 import asyncio
+import base64
+import os
+import litellm
 from pydantic import BaseModel, Field
-from crewai.tools import BaseTool
+from crewai.tools import BaseTool, tool
 from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.session import ClientSession
@@ -40,3 +43,43 @@ class SSHMCPTool(BaseTool):
                 return f"Failed to execute command on {hostname}: {str(e)}"
         
         return asyncio.run(run_mcp_command())
+
+@tool("Analyze Local Screenshot Tool")
+def vision_tool(image_path: str) -> str:
+    """
+    Use this tool to read and extract text from local screenshot images. 
+    Pass the relative or absolute file path to the image as the argument.
+    """
+    # 1. Catch bad paths before they hit the LLM
+    if not os.path.exists(image_path):
+        return f"Error: Could not find image at path {image_path}"
+
+    try:
+        # 2. Read and encode the local image to Base64
+        with open(image_path, "rb") as img_file:
+            base64_image = base64.b64encode(img_file.read()).decode('utf-8')
+            
+        # 3. Manually format the payload so LiteLLM/Gemini can't misunderstand it
+        response = litellm.completion(
+            model="gemini/gemini-3-flash-preview", 
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": "You are a visual QA analyst. Review this screenshot and extract any visible text, especially red error banners, form validation errors, and the page title/state."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Vision processing failed: {str(e)}"

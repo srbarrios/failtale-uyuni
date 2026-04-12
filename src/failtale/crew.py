@@ -2,10 +2,12 @@ import os
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
-from crewai_tools import VisionTool
+# Built-in VisionTool commented because doesn't work properly through Gemini
+#from crewai_tools import VisionTool
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
 from failtale.tools import SSHMCPTool
+from failtale.tools.custom_tools import vision_tool
 
 #llm = LLM(
 #    api_key="ollama",
@@ -13,22 +15,25 @@ from failtale.tools import SSHMCPTool
 #    base_url="http://localhost:11434/v1"
 #)
 
-llm = LLM(
-    api_key="your_api",
-    model="gemini/gemini-3.1-flash-lite-preview"
+gemini_llm = LLM(
+    model="gemini/gemini-3-flash-preview", 
+    api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 user_prefs_source = TextFileKnowledgeSource(
-    file_paths=["user_preference.txt"]
+    file_paths=["user_preference.txt"],
+    collection_name="ollama_user_prefs"
 )
 
+#TODO: Parametrize this content. For now I'm trying with an example
 pdf_source = PDFKnowledgeSource(
     file_paths=[
         "examples/uyuni/uyuni_administration_guide.pdf"
     ],
+    collection_name="ollama_uyuni_docs"
 )
 
-vision_tool = VisionTool()
+# vision_tool = VisionTool(llm=gemini_llm)
 
 @CrewBase
 class FailTale():
@@ -40,17 +45,17 @@ class FailTale():
     @agent
     def host_selector(self) -> Agent:
         return Agent(
-            llm=llm,
             config=self.agents_config['host_selector'],
+            llm=gemini_llm,
             verbose=True
         )
 
     @agent
     def data_collector(self) -> Agent:
         return Agent(
-            llm=llm,
             config=self.agents_config['data_collector'],
             tools=[SSHMCPTool()],
+            llm=gemini_llm,
             verbose=True
         )
 
@@ -59,15 +64,15 @@ class FailTale():
         return Agent(
             config=self.agents_config['screenshot_analyzer'],
             tools=[vision_tool],
-            llm=llm,
+            llm=gemini_llm,
             verbose=True
         )
 
     @agent
     def failure_analyst(self) -> Agent:
         return Agent(
-            llm=llm,
             config=self.agents_config['failure_analyst'],
+            llm=gemini_llm,
             verbose=True
         )
 
@@ -102,6 +107,13 @@ class FailTale():
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
-            knowledge_sources=[user_prefs_source],
+            knowledge_sources=[user_prefs_source, pdf_source],
+            embedder={
+                "provider": "ollama",
+                "config": {
+                    "model": "nomic-embed-text"
+                }
+            },
+            llm=gemini_llm,
             verbose=True,
         )
