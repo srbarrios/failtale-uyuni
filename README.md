@@ -48,6 +48,79 @@ crewai install
 - `npx` available in `PATH` (required by `SSHMCPTool`).
 - Ollama running locally with `nomic-embed-text` pulled for knowledge embeddings.
 
+### Configure `.env` for a specific failed test
+
+FailTale reads test failure inputs from environment variables in `src/failtale/main.py`.
+To analyze one specific failure, point these values to failure-specific files:
+
+```dotenv
+# Existing provider key
+GOOGLE_API_KEY=your_google_api_key
+
+# Inputs consumed by get_inputs()
+CONFIG_PATH=examples/uyuni/config.yaml
+TEST_REPORT_PATH=tmp/failtale/2026-04-14_123045/report.txt
+TEST_FAILURE_PATH=tmp/failtale/2026-04-14_123045/failure.txt
+SCREENSHOT_PATH=tmp/failtale/2026-04-14_123045/screenshot.png
+```
+
+Notes:
+- `CONFIG_PATH` must include exactly one host with `role: "server"`.
+- Uyuni MCP connection env vars are derived automatically from the config file (`uyuni_mcp` + server host) before the crew is created.
+- If any of these variables are missing, FailTale falls back to files in `examples/uyuni/`.
+
+### Cucumber integration (`After` hook on scenario failure)
+
+The example below captures failure context, writes files for FailTale, and runs analysis only when the scenario fails.
+
+```ruby
+# features/support/failtale_after_hook.rb
+require "fileutils"
+require "open3"
+require "time"
+
+After do |scenario|
+  next unless scenario.failed?
+
+  ts = Time.now.utc.strftime("%Y%m%d_%H%M%S")
+  safe_name = scenario.name.gsub(/[^a-zA-Z0-9_-]/, "_")
+  out_dir = File.join("tmp", "failtale", "#{ts}_#{safe_name}")
+  FileUtils.mkdir_p(out_dir)
+
+  report_path = File.join(out_dir, "test_report.txt")
+  failure_path = File.join(out_dir, "test_failure.txt")
+  screenshot_path = File.join(out_dir, "screenshot.png")
+
+  File.write(report_path, <<~REPORT)
+	Feature: #{scenario.feature.name}
+	Scenario: #{scenario.name}
+	Location: #{scenario.location}
+	Status: failed
+	Tags: #{scenario.source_tag_names.join(", ")}
+  REPORT
+
+  File.write(failure_path, scenario.exception&.message.to_s)
+
+  # Replace this with your UI framework screenshot method.
+  # Example for Capybara/Selenium:
+  page.save_screenshot(screenshot_path) if defined?(page)
+
+  env = {
+	"CONFIG_PATH" => "examples/uyuni/config.yaml",
+	"TEST_REPORT_PATH" => report_path,
+	"TEST_FAILURE_PATH" => failure_path,
+	"SCREENSHOT_PATH" => screenshot_path
+  }
+
+  stdout, stderr, status = Open3.capture3(env, "crewai", "run")
+
+  puts "[FailTale] Output:\n#{stdout}"
+  warn "[FailTale] Errors:\n#{stderr}" unless status.success?
+end
+```
+
+If you prefer a pure `.env` workflow, write these same paths to `.env` before calling `crewai run`.
+
 
 ### Uyuni TLS / Certificates
 
