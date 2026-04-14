@@ -63,3 +63,11 @@ uyuni_mcp:
   uyuni_pass: "admin"
   image_version: "latest"
   ssl_verify: false
+
+# Optional knowledge configuration
+knowledge:
+  pdf:
+    file_paths:
+      - "examples/uyuni/uyuni_administration_guide.pdf"
+    collection_name: "uyuni_docs"
+

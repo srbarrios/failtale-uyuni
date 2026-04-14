@@ -1,4 +1,5 @@
 import os
+import json
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
@@ -27,13 +28,39 @@ user_prefs_source = TextFileKnowledgeSource(
     collection_name="ollama_user_prefs"
 )
 
-#TODO: Parametrize this content. For now I'm trying with an example
-pdf_source = PDFKnowledgeSource(
-    file_paths=[
-        "examples/uyuni/uyuni_administration_guide.pdf"
-    ],
-    collection_name="ollama_uyuni_docs"
-)
+DEFAULT_KNOWLEDGE_PDF_PATHS = ["examples/uyuni/uyuni_administration_guide.pdf"]
+DEFAULT_KNOWLEDGE_PDF_COLLECTION_NAME = "uyuni_docs"
+
+
+def _build_pdf_knowledge_source() -> PDFKnowledgeSource:
+    """Build PDF knowledge source from env vars populated by main.py config loading."""
+    raw_paths = os.getenv("KNOWLEDGE_PDF_PATHS", "")
+    if raw_paths.strip():
+        try:
+            parsed_paths = json.loads(raw_paths)
+            if isinstance(parsed_paths, str):
+                file_paths = [parsed_paths]
+            elif isinstance(parsed_paths, list):
+                file_paths = [str(path) for path in parsed_paths if str(path).strip()]
+            else:
+                file_paths = []
+        except json.JSONDecodeError:
+            file_paths = [path.strip() for path in raw_paths.split(",") if path.strip()]
+    else:
+        file_paths = DEFAULT_KNOWLEDGE_PDF_PATHS
+
+    if not file_paths:
+        file_paths = DEFAULT_KNOWLEDGE_PDF_PATHS
+
+    collection_name = os.getenv(
+        "KNOWLEDGE_PDF_COLLECTION_NAME",
+        DEFAULT_KNOWLEDGE_PDF_COLLECTION_NAME,
+    )
+
+    return PDFKnowledgeSource(
+        file_paths=file_paths,
+        collection_name=collection_name,
+    )
 
 # vision_tool = VisionTool(llm=gemini_llm)
 
@@ -143,7 +170,7 @@ class FailTale():
             agents=self.agents,
             tasks=self.tasks,
             process=Process.sequential,
-            knowledge_sources=[user_prefs_source, pdf_source],
+            knowledge_sources=[user_prefs_source, _build_pdf_knowledge_source()],
             embedder={
                 "provider": "ollama",
                 "config": {

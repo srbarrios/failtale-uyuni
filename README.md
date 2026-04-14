@@ -67,6 +67,7 @@ SCREENSHOT_PATH=tmp/failtale/2026-04-14_123045/screenshot.png
 Notes:
 - `CONFIG_PATH` must include exactly one host with `role: "server"`.
 - Uyuni MCP connection env vars are derived automatically from the config file (`uyuni_mcp` + server host) before the crew is created.
+- PDF knowledge source settings are also derived from config (`knowledge.pdf.file_paths` and `knowledge.pdf.collection_name`) with defaults to the Uyuni example docs.
 - If any of these variables are missing, FailTale falls back to files in `examples/uyuni/`.
 
 ### Cucumber integration (`After` hook on scenario failure)

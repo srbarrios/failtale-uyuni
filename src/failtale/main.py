@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import yaml
 from dotenv import load_dotenv
 
@@ -36,6 +37,31 @@ def _configure_uyuni_mcp_env(config: dict) -> None:
     os.environ.setdefault("UYUNI_MCP_SSL_VERIFY", str(ssl_verify).lower())
 
 
+def _configure_knowledge_env(config: dict) -> None:
+    """Configure knowledge source env vars from config with safe defaults."""
+    knowledge_cfg = config.get("knowledge", {})
+    pdf_cfg = knowledge_cfg.get("pdf", {})
+
+    default_paths = ["examples/uyuni/uyuni_administration_guide.pdf"]
+    default_collection = "ollama_uyuni_docs"
+
+    configured_paths = pdf_cfg.get("file_paths", default_paths)
+    if isinstance(configured_paths, str):
+        file_paths = [configured_paths]
+    elif isinstance(configured_paths, list):
+        file_paths = [str(path) for path in configured_paths if str(path).strip()]
+    else:
+        file_paths = default_paths
+
+    if not file_paths:
+        file_paths = default_paths
+
+    collection_name = str(pdf_cfg.get("collection_name", default_collection))
+
+    os.environ.setdefault("KNOWLEDGE_PDF_PATHS", json.dumps(file_paths))
+    os.environ.setdefault("KNOWLEDGE_PDF_COLLECTION_NAME", collection_name)
+
+
 def get_inputs():
     """Helper function to load files and prepare inputs based on environment variables."""
 
@@ -53,6 +79,7 @@ def get_inputs():
 
     # Configure Uyuni MCP env vars from the loaded config
     _configure_uyuni_mcp_env(config)
+    _configure_knowledge_env(config)
 
     # Load the Test Report text file
     if not os.path.exists(test_report_path):
