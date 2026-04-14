@@ -55,8 +55,11 @@ class SSHMCPTool(BaseTool):
                         result = await session.call_tool("exec", arguments={"command": command})
                         return result.content[0].text
             except Exception as e:
-                return f"Failed to execute command on {hostname}: {str(e)}"
-        
+                error_msg = str(e)
+                if hasattr(e, 'exceptions'):
+                    error_msg += " Sub-exceptions: " + ", ".join(str(sub_e) for sub_e in e.exceptions)
+                return f"Failed to execute command on {hostname}: {error_msg}"
+
         return asyncio.run(run_mcp_command())
 
 
@@ -108,5 +111,3 @@ def vision_tool(image_path: str) -> str:
         return response.choices[0].message.content
     except Exception as e:
         return f"Vision processing failed: {str(e)}"
-
-

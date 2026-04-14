@@ -30,6 +30,8 @@ user_prefs_source = TextFileKnowledgeSource(
 
 DEFAULT_KNOWLEDGE_PDF_PATHS = ["examples/uyuni/uyuni_administration_guide.pdf"]
 DEFAULT_KNOWLEDGE_PDF_COLLECTION_NAME = "uyuni_docs"
+DEFAULT_EMBEDDINGS_OLLAMA_MODEL_NAME = "nomic-embed-text"
+DEFAULT_EMBEDDINGS_OLLAMA_BASE_URL = "http://localhost:11434"
 
 
 def _build_pdf_knowledge_source() -> PDFKnowledgeSource:
@@ -174,7 +176,14 @@ class FailTale():
             embedder={
                 "provider": "ollama",
                 "config": {
-                    "model": "nomic-embed-text"
+                    "model": os.getenv(
+                        "EMBEDDINGS_OLLAMA_MODEL_NAME",
+                        DEFAULT_EMBEDDINGS_OLLAMA_MODEL_NAME,
+                    ),
+                    "base_url": os.getenv(
+                        "EMBEDDINGS_OLLAMA_BASE_URL",
+                        DEFAULT_EMBEDDINGS_OLLAMA_BASE_URL,
+                    ),
                 }
             },
             llm=gemini_llm,

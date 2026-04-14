@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+DEFAULT_CREWAI_STORAGE_DIR = "./chroma_db_ollama"
+os.environ.setdefault("CREWAI_STORAGE_DIR", DEFAULT_CREWAI_STORAGE_DIR)
+
 
 def _configure_uyuni_mcp_env(config: dict) -> None:
     """

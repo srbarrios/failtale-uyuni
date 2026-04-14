@@ -23,9 +23,9 @@ collect_data_task:
     ### Hosts with role "server" — use Uyuni MCP FIRST
     1. Start by calling the Uyuni MCP tool with tool_name='list_tools' (no args
        needed) to discover all tools the Uyuni API exposes.
-    2. Call every relevant Uyuni MCP tool to obtain: registered systems, activation
+    2. Call the relevant Uyuni MCP tools to obtain: registered systems, activation
        keys, software channels, accepted salt keys, patches, events, service health,
-       and any other resource the API provides.
+       or any other resource the API provides.
     3. Only after exhausting Uyuni MCP tools, fall back to execute_remote_ssh_command
        for information not covered by the API (e.g. raw log tails, process lists,
        listening ports) using the predefined SSH commands from Components Config below.

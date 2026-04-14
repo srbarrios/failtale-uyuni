@@ -70,6 +70,83 @@ Notes:
 - PDF knowledge source settings are also derived from config (`knowledge.pdf.file_paths` and `knowledge.pdf.collection_name`) with defaults to the Uyuni example docs.
 - If any of these variables are missing, FailTale falls back to files in `examples/uyuni/`.
 
+### `config.yaml` reference
+
+FailTale loads `examples/uyuni/config.yaml` in `src/failtale/main.py` and uses it in two ways:
+
+- **Direct/runtime usage in Python code:** values are read and transformed into env vars or crew inputs.
+- **Agent-guidance usage:** full sections are stringified and passed to task prompts so the `data_collector` agent knows which commands/credentials to use.
+
+#### 1) `ssh_defaults`
+
+Example keys:
+- `username`
+- `private_key_path`
+- `port`
+- `connection_timeout`
+- `command_timeout`
+
+Usage:
+- `main.py:get_inputs()` passes this section as `ssh_credentials` into `crew.kickoff(inputs=...)`.
+- In `src/failtale/config/tasks.yaml` (`collect_data_task`), `{ssh_credentials}` is injected into the prompt so the agent can call `execute_remote_ssh_command` with the expected SSH settings.
+- The Python code does **not** parse individual `ssh_defaults` keys itself; the agent consumes them from prompt context.
+
+#### 2) `components`
+
+Example keys:
+- Role blocks such as `server`, `minion`, `proxy`, `build_host`
+- Per-role `useful_data[]` with `description` and `command`
+
+Usage:
+- `main.py:get_inputs()` passes this section as `components_config` into crew inputs.
+- `collect_data_task` injects `{components_config}` into the task instructions so the `data_collector` agent executes role-specific commands (Uyuni MCP first for `server`, SSH for fallback/other roles).
+- As with `ssh_defaults`, Python code does not enforce or execute these commands directly; the agent uses them.
+
+#### 3) `hosts`
+
+Example keys per host:
+- `hostname`
+- `role`
+- optional host credentials such as `user`, `password`
+
+Usage:
+- **Direct/runtime usage:** `_configure_uyuni_mcp_env()` requires exactly one host with `role: "server"` and reads that host's `hostname` to build `UYUNI_MCP_SERVER=<hostname>:<port>`.
+- **Agent-guidance usage:** `get_inputs()` also passes full `hosts` as `hosts_inventory`, which is used by `select_hosts_task` prompt (`Available hosts in the environment: {hosts_inventory}`).
+
+#### 4) `uyuni_mcp`
+
+Keys used by code:
+- `port` (default `443`)
+- `uyuni_user` (default `admin`)
+- `uyuni_pass` (default `admin`)
+- `image_version` (default `latest`)
+- `ssl_verify` (default `true`)
+
+Usage:
+- `_configure_uyuni_mcp_env()` maps these values to env vars:
+  - `UYUNI_MCP_SERVER` (from server `hostname` + `port`)
+  - `UYUNI_MCP_USER`
+  - `UYUNI_MCP_PASS`
+  - `UYUNI_MCP_IMAGE_VERSION`
+  - `UYUNI_MCP_SSL_VERIFY`
+- In `src/failtale/crew.py`, `data_collector()` reads those env vars to start the Uyuni MCP Docker server (`ghcr.io/uyuni-project/mcp-server-uyuni:<image_version>`).
+
+#### 5) `knowledge.pdf`
+
+Keys used by code:
+- `file_paths`
+- `collection_name`
+
+Usage:
+- `_configure_knowledge_env()` reads `knowledge.pdf.file_paths` and `knowledge.pdf.collection_name`.
+- It exports `KNOWLEDGE_PDF_PATHS` and `KNOWLEDGE_PDF_COLLECTION_NAME`.
+- In `crew.py`, `_build_pdf_knowledge_source()` reads those env vars and builds the `PDFKnowledgeSource` used by the crew knowledge system.
+
+#### Notes about keys not currently consumed directly
+
+- Host fields like `hosts[*].user` / `hosts[*].password` are not read directly by Python helper functions today; they are available to agents through `hosts_inventory` prompt context.
+- For SSH execution, the actual tool call arguments are chosen by the agent at runtime based on task instructions plus `components_config` and `ssh_credentials`.
+
 ### Cucumber integration (`After` hook on scenario failure)
 
 The example below captures failure context, writes files for FailTale, and runs analysis only when the scenario fails.
