@@ -55,3 +55,11 @@ hosts:
    role: "minion"
    user: "root"
    password: "linux"
+
+# Uyuni MCP server configuration (used for the host with role "server")
+uyuni_mcp:
+  port: 443
+  uyuni_user: "admin"
+  uyuni_pass: "admin"
+  image_version: "latest"
+  ssl_verify: false
