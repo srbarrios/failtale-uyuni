@@ -6,7 +6,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 #from crewai_tools import VisionTool
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
-from failtale.tools import SSHMCPTool
+from failtale.tools import SSHMCPTool, UyuniMCPTool
 from failtale.tools.custom_tools import vision_tool
 
 #llm = LLM(
@@ -45,7 +45,7 @@ class FailTale():
     @agent
     def host_selector(self) -> Agent:
         return Agent(
-            config=self.agents_config['host_selector'],
+            config=self.agents_config['host_selector'],  # type: ignore[index]
             llm=gemini_llm,
             verbose=True
         )
@@ -53,8 +53,14 @@ class FailTale():
     @agent
     def data_collector(self) -> Agent:
         return Agent(
-            config=self.agents_config['data_collector'],
-            tools=[SSHMCPTool()],
+            config=self.agents_config['data_collector'],  # type: ignore[index]
+            tools=[
+                # UyuniMCPTool is listed FIRST so the LLM prefers it for the
+                # Uyuni server node; SSHMCPTool serves as fallback and handles
+                # non-server roles (minion, proxy, build_host,...).
+                UyuniMCPTool(),
+                SSHMCPTool(),
+            ],
             llm=gemini_llm,
             verbose=True
         )
@@ -62,7 +68,7 @@ class FailTale():
     @agent
     def screenshot_analyzer(self) -> Agent:
         return Agent(
-            config=self.agents_config['screenshot_analyzer'],
+            config=self.agents_config['screenshot_analyzer'],  # type: ignore[index]
             tools=[vision_tool],
             llm=gemini_llm,
             verbose=True
@@ -71,7 +77,7 @@ class FailTale():
     @agent
     def failure_analyst(self) -> Agent:
         return Agent(
-            config=self.agents_config['failure_analyst'],
+            config=self.agents_config['failure_analyst'],  # type: ignore[index]
             llm=gemini_llm,
             verbose=True
         )
@@ -79,25 +85,26 @@ class FailTale():
     @task
     def select_hosts_task(self) -> Task:
         return Task(
-            config=self.tasks_config['select_hosts_task']
+            config=self.tasks_config['select_hosts_task']  # type: ignore[index]
         )
 
     @task
     def collect_data_task(self) -> Task:
         return Task(
-            config=self.tasks_config['collect_data_task']
+            config=self.tasks_config['collect_data_task'],  # type: ignore[index]
+            context=[self.select_hosts_task()],
         )
 
     @task
     def analyze_screenshot_task(self) -> Task:
         return Task(
-            config=self.tasks_config['analyze_screenshot_task']
+            config=self.tasks_config['analyze_screenshot_task']  # type: ignore[index]
         )
 
     @task
     def analyze_failure_task(self) -> Task:
         return Task(
-            config=self.tasks_config['analyze_failure_task'],
+            config=self.tasks_config['analyze_failure_task'],  # type: ignore[index]
             output_file='root_cause_hint.md'
         )
 

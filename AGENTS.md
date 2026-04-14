@@ -139,6 +139,209 @@ my_flow/
 - **Crew**: Orchestrates a team of agents executing tasks in a defined process (sequential or hierarchical).
 - **Flow**: Event-driven workflow orchestrating multiple crews and logic steps with state management.
 
+---
+
+## This Project: FailTale
+
+FailTale is an automated test failure reviewer. Given a test failure report, it identifies relevant remote hosts, collects SSH logs, analyzes failure screenshots, and produces a root cause hint in Markdown.
+
+### Actual Project Structure
+
+```
+failtale-crewai/
+├── src/failtale/
+│   ├── config/
+│   │   ├── agents.yaml       # 4 agents: host_selector, data_collector, screenshot_analyzer, failure_analyst
+│   │   └── tasks.yaml        # 4 tasks: select_hosts_task, collect_data_task, analyze_screenshot_task, analyze_failure_task
+│   ├── tools/
+│   │   ├── __init__.py       # exports SSHMCPTool, UyuniMCPTool
+│   │   └── custom_tools.py   # SSHMCPTool (MCP/SSH) + UyuniMCPTool (Docker/Uyuni API) + vision_tool (litellm direct)
+│   ├── crew.py               # FailTale crew class
+│   └── main.py               # Entry point + get_inputs() helper
+├── knowledge/
+│   ├── user_preference.txt               # User context (Senior QA Automation Engineer)
+│   └── examples/uyuni/
+│       └── uyuni_administration_guide.pdf  # Product documentation (Uyuni example)
+├── examples/uyuni/
+│   ├── config.yaml           # Example input config (hosts, components, ssh_defaults)
+│   ├── test_report.txt       # Example test report
+│   ├── test_failure.txt      # Example failure message
+│   └── screenshot.png        # Example screenshot
+└── pyproject.toml            # [tool.crewai] type = "crew"
+```
+
+### Agent Pipeline (Sequential)
+
+| Step | Agent | Tool | Output |
+|------|-------|------|--------|
+| 1 | `host_selector` (Test Environment Analyst) | — | Comma-separated hostnames |
+| 2 | `data_collector` (System Investigator) | `UyuniMCPTool` (primary for `server` role) + `SSHMCPTool` (fallback / other roles) | Raw logs from remote hosts |
+| 3 | `screenshot_analyzer` (Visual QA Analyst) | `vision_tool` | Visible UI errors from screenshot |
+| 4 | `failure_analyst` (Root Cause Analyst) | — | `root_cause_hint.md` (written to project root) |
+
+### Input Preparation
+
+`main.py::get_inputs()` loads inputs from env vars (with fallback to `examples/uyuni/`). It also calls `_configure_uyuni_mcp_env(config)`, which reads the `uyuni_mcp` section from the loaded config and sets the env vars required by `UyuniMCPTool` before the crew is constructed:
+
+| Env Var | Default | Purpose |
+|---------|---------|---------|
+| `CONFIG_PATH` | `examples/uyuni/config.yaml` | Hosts inventory + component commands |
+| `TEST_REPORT_PATH` | `examples/uyuni/test_report.txt` | Full test report content |
+| `TEST_FAILURE_PATH` | `examples/uyuni/test_failure.txt` | Failure message |
+| `SCREENSHOT_PATH` | `examples/uyuni/screenshot.png` | Screenshot path passed to `vision_tool` |
+
+Inputs passed to `crew.kickoff()`:
+```python
+{
+    'test_report': str,           # contents of TEST_REPORT_PATH
+    'test_failure': str,          # contents of TEST_FAILURE_PATH
+    'screenshot_path': str,       # path string (not file contents)
+    'hosts_inventory': str,       # from config.yaml["hosts"]
+    'components_config': str,     # from config.yaml["components"]
+    'ssh_credentials': str,       # from config.yaml["ssh_defaults"]
+}
+```
+
+`_configure_uyuni_mcp_env(config)` sets the following env vars (used by `UyuniMCPTool`):
+
+| Env Var | Source in config | Default |
+|---------|-----------------|---------|
+| `UYUNI_MCP_SERVER` | `hosts[role=server].hostname` + `uyuni_mcp.port` | — |
+| `UYUNI_MCP_USER` | `uyuni_mcp.uyuni_user` | `"admin"` |
+| `UYUNI_MCP_PASS` | `uyuni_mcp.uyuni_pass` | `"admin"` |
+| `UYUNI_MCP_IMAGE_VERSION` | `uyuni_mcp.image_version` | `"latest"` |
+
+**Constraint**: the config must define exactly one host with `role: "server"` or `_configure_uyuni_mcp_env` will raise a `ValueError`.
+
+### Config File Format (`examples/uyuni/config.yaml`)
+
+```yaml
+ssh_defaults:
+  username: "root"
+  private_key_path: "/path/to/key"
+  port: 22
+  connection_timeout: 30   # seconds
+  command_timeout: 180     # seconds
+
+components:
+  server:
+    useful_data:
+      - description: "Last 100 lines of logs"
+        command: "mgrctl exec \"tail -n 100 /var/log/rhn/*.log\""
+  minion:
+    useful_data:
+      - description: "Salt minion logs"
+        command: "journalctl --identifier salt-minion --lines 100"
+
+hosts:
+  - hostname: "my-server.example.com"
+    role: "server"
+    user: "root"
+    password: "linux"
+
+# Required for UyuniMCPTool — must be present when a "server" host is defined
+uyuni_mcp:
+  port: 443
+  uyuni_user: "admin"
+  uyuni_pass: "admin"
+  image_version: "latest"
+```
+
+Component roles (`server`, `minion`, `proxy`, `build_host`) map to command sets in `components`.
+
+### Custom Tools
+
+#### `SSHMCPTool` (`src/failtale/tools/custom_tools.py`)
+Executes shell commands on remote Linux hosts via the `ssh-mcp` MCP server over stdio.
+- **Requires**: `npx` in `$PATH` and the `ssh-mcp` npm package (installed on-demand via `npx -y`)
+- Spins up a new `ssh-mcp` process per invocation using `asyncio.run()`
+- Input schema: `hostname`, `username`, `private_key_path`, `command`
+
+```python
+from failtale.tools import SSHMCPTool
+tools=[SSHMCPTool()]  # used by data_collector agent
+```
+
+#### `UyuniMCPTool` (`src/failtale/tools/custom_tools.py`)
+Calls tools exposed by the `mcp-server-uyuni` Docker image, providing authoritative data straight from the Uyuni API (systems, activation keys, channels, salt keys, patches, events).
+- **Requires**: `docker` in `$PATH` — pulls and runs `ghcr.io/uyuni-project/mcp-server-uyuni:<version>` on-demand via stdio
+- Connection details are read from env vars at construction time (`UYUNI_MCP_SERVER`, `UYUNI_MCP_USER`, `UYUNI_MCP_PASS`, `UYUNI_MCP_IMAGE_VERSION`), set by `_configure_uyuni_mcp_env()` before the crew is built
+- Input schema: `tool_name` (string), `tool_args` (JSON-encoded string, default `"{}"`)
+- Pass `tool_name='list_tools'` first to discover all available Uyuni API tools
+- Listed **before** `SSHMCPTool` in `data_collector.tools` so the LLM prefers it for the server host
+
+```python
+from failtale.tools import UyuniMCPTool
+tools=[UyuniMCPTool(), SSHMCPTool()]  # used by data_collector agent; UyuniMCPTool is primary
+```
+
+#### `vision_tool` (`src/failtale/tools/custom_tools.py`)
+Analyzes a local screenshot image using `litellm.completion` directly (base64-encoded payload).
+- **Why not `crewai_tools.VisionTool`?** It does not work correctly when the agent LLM is Gemini. Use `litellm.completion` with `gemini/gemini-3-flash-preview` instead.
+- Accepts a file path string; returns text description of visible errors/UI state.
+
+```python
+from failtale.tools.custom_tools import vision_tool
+tools=[vision_tool]  # used by screenshot_analyzer agent
+```
+
+### LLM Configuration
+
+All agents use the Gemini LLM defined at module level in `crew.py`:
+
+```python
+gemini_llm = LLM(
+    model="gemini/gemini-3-flash-preview",
+    api_key=os.getenv("GOOGLE_API_KEY")
+)
+```
+
+A commented-out Ollama alternative is available in `crew.py` for local inference:
+```python
+# llm = LLM(
+#     api_key="ollama",
+#     model="openai/llama3.2-vision",
+#     base_url="http://localhost:11434/v1"
+# )
+```
+
+### Knowledge Sources & Embedder
+
+The crew uses two knowledge sources and Ollama for embeddings (requires `ollama` running locally):
+
+```python
+# knowledge/user_preference.txt — user context
+user_prefs_source = TextFileKnowledgeSource(
+    file_paths=["user_preference.txt"],
+    collection_name="ollama_user_prefs"
+)
+
+# knowledge/examples/uyuni/uyuni_administration_guide.pdf — product docs
+pdf_source = PDFKnowledgeSource(
+    file_paths=["examples/uyuni/uyuni_administration_guide.pdf"],
+    collection_name="ollama_uyuni_docs"
+)
+
+crew = Crew(
+    ...,
+    knowledge_sources=[user_prefs_source, pdf_source],
+    embedder={"provider": "ollama", "config": {"model": "nomic-embed-text"}},
+)
+```
+
+**To add knowledge for a different product**: add its PDF under `knowledge/examples/<product>/` and update the `pdf_source` in `crew.py`. The `collection_name` is currently hardcoded — parameterize it if supporting multiple products simultaneously.
+
+### External Prerequisites
+
+Before running, ensure:
+- **`npx`** is available in `$PATH` (Node.js/npm installed)
+- **`docker`** is available in `$PATH` (required by `UyuniMCPTool` to run the `mcp-server-uyuni` container)
+- **Ollama** is running locally with the `nomic-embed-text` model pulled: `ollama pull nomic-embed-text`
+- **SSH private key** exists at the path specified in `config.yaml` (`ssh_defaults.private_key_path`)
+- **`GOOGLE_API_KEY`** is set in `.env`
+
+---
+
 ## YAML Configuration
 
 ### agents.yaml
@@ -967,6 +1170,10 @@ jobs:
 
 ### Required `.env`
 ```
+# This project uses Gemini — GOOGLE_API_KEY is required
+GOOGLE_API_KEY=...
+
+# Generic OpenAI/other providers (not used by default in this project)
 OPENAI_API_KEY=sk-...
 # Optional depending on tools/providers:
 SERPER_API_KEY=...
@@ -1015,3 +1222,8 @@ crewai run                    # Execute
 - Using `process=Process.hierarchical` without setting `manager_llm` or `manager_agent`
 - Circular delegation: set `allow_delegation=False` on specialist agents
 - Not installing tools package: `uv add crewai-tools`
+- **`VisionTool` from `crewai_tools` does not work correctly when the agent LLM is Gemini** — use `litellm.completion` directly with a base64-encoded image payload instead (see `vision_tool` in `src/failtale/tools/custom_tools.py`)
+- **`SSHMCPTool` requires `npx` in `$PATH`** — if `npx` is missing, the tool will silently fail; ensure Node.js/npm is installed
+- **`UyuniMCPTool` requires `docker` in `$PATH`** — the tool runs `ghcr.io/uyuni-project/mcp-server-uyuni` via stdio; if Docker is not running or missing, the tool will fail with a connection error
+- **`UyuniMCPTool` connection env vars must be set before crew construction** — `_configure_uyuni_mcp_env(config)` in `main.py` must run before `FailTale().crew()` is called; if the config lacks exactly one `role: "server"` host, it raises `ValueError`
+- **Ollama must be running** before crew execution — the embedder uses `nomic-embed-text` via Ollama for knowledge sources; run `ollama pull nomic-embed-text` and start the Ollama daemon first

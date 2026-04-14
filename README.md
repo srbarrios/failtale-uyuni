@@ -17,13 +17,13 @@ By leveraging the powerful and flexible multi-agent framework provided by crewAI
 
 The FailTale is composed of multiple AI agents, each with unique roles, goals, and tools. Instead of a traditional linear script, the system operates as a collaborative workflow:
 
-1. **Trigger:** The crew receives a test failure report and contextual data (defined via inputs in `src/failtale_crew/main.py`).
+1. **Trigger:** The crew receives a test failure report and contextual data (defined via inputs in `src/failtale/main.py`).
 2. **Targeting:** An agent analyzes the failure and identifies the specific hosts and components that need debugging.
 3. **Execution & Collection:** Using custom tools, agents connect to the identified hosts and execute targeted, filtered commands to collect state data and logs.
 4. **Analysis:** The collected data is analyzed by the crew to formulate root cause hints.
 5. **Output:** The final insights are formatted and can be injected back into the client or test report.
 
-These agents and their specific tasks are defined in `config/agents.yaml` and `config/tasks.yaml`.
+These agents and their specific tasks are defined in `src/failtale/config/agents.yaml` and `src/failtale/config/tasks.yaml`.
 
 ## Installation
 
@@ -41,14 +41,26 @@ Next, navigate to your project directory and install the dependencies:
 ```bash
 crewai install
 ```
+### Runtime prerequisites
+
+- `GOOGLE_API_KEY` set in `.env` (Gemini is the default model provider).
+- `docker` available in `PATH` (required by `UyuniMCPTool`).
+- `npx` available in `PATH` (required by `SSHMCPTool`).
+- Ollama running locally with `nomic-embed-text` pulled for knowledge embeddings.
+
+
+### Uyuni TLS / Certificates
+
+- If the Uyuni server uses an untrusted certificate by default, you can adjust `uyuni_mcp.ssl_verify` in `examples/uyuni/config.yaml`.
+- `ssl_verify: true` (recommended in production) validates TLS certificates.
+- `ssl_verify: false` disables TLS validation and prevents errors such as `CERTIFICATE_VERIFY_FAILED` in lab environments.
+
 ### Customizing
 
-**Add your `OPENAI_API_KEY` into the `.env` file**
-
-- Modify `src/failtale_crew/config/agents.yaml` to define your agents
-- Modify `src/failtale_crew/config/tasks.yaml` to define your tasks
-- Modify `src/failtale_crew/crew.py` to add your own logic, tools and specific args
-- Modify `src/failtale_crew/main.py` to add custom inputs for your agents and tasks
+- Modify `src/failtale/config/agents.yaml` to define your agents.
+- Modify `src/failtale/config/tasks.yaml` to define your tasks.
+- Modify `src/failtale/crew.py` to add your own logic, tools and specific args.
+- Modify `src/failtale/main.py` to add custom inputs for your agents and tasks.
 
 ## Running the Project
 

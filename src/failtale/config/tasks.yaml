@@ -13,15 +13,36 @@ select_hosts_task:
 
 collect_data_task:
   description: >
-    The selected hosts are: {selected_hosts}
-    
-    For these hosts, execute the predefined useful commands to collect logs based on their roles:
-    Commands Config: {components_config}
-    SSH Credentials: {ssh_credentials}
-    
-    DO NOT just output the JSON of the command. You must actually invoke the tool to execute the commands and gather the real output from the server.
+    Use the selected hostnames produced by select_hosts_task as the host list
+    for this task.
+
+    For each host, collect logs and system state following the priority rules below.
+
+    ## Priority rules
+
+    ### Hosts with role "server" — use Uyuni MCP FIRST
+    1. Start by calling the Uyuni MCP tool with tool_name='list_tools' (no args
+       needed) to discover all tools the Uyuni API exposes.
+    2. Call every relevant Uyuni MCP tool to obtain: registered systems, activation
+       keys, software channels, accepted salt keys, patches, events, service health,
+       and any other resource the API provides.
+    3. Only after exhausting Uyuni MCP tools, fall back to execute_remote_ssh_command
+       for information not covered by the API (e.g. raw log tails, process lists,
+       listening ports) using the predefined SSH commands from Components Config below.
+
+    ### Hosts with other roles (minion, proxy, build_host) — use SSH only
+    Execute the predefined SSH commands for each host's role as listed in Components Config.
+
+    ## Configuration
+    Components Config: {components_config}
+    SSH Credentials:   {ssh_credentials}
+
+    DO NOT just output JSON or describe what you would do — you MUST actually invoke
+    the tools and report the real output returned by each call.
   expected_output: >
-    The actual raw string outputs and logs retrieved from the servers after successfully running the commands via the tool.
+    The actual raw outputs retrieved from each host, clearly labelled by host and
+    tool/command used. Uyuni MCP results must be listed before SSH fallback results
+    for the server host.
   agent: data_collector
 
 analyze_screenshot_task:
